@@ -20,7 +20,6 @@ func readBody(r *http.Request, req interface{}) error {
 	if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
 		return err
 	}
-	fmt.Println(string(msg))
 	return json.Unmarshal(msg, req)
 }
 
@@ -55,11 +54,6 @@ func (d *Driver) handleCreateNetwork(w http.ResponseWriter, r *http.Request) {
 		handleError(w, fmt.Errorf("invalid request: %s", err))
 		return
 	}
-	data, err := json.Marshal(req)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(string(data))
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	var ipv4data *NetworkData

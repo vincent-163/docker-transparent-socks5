@@ -17,9 +17,11 @@ type network struct {
 	gatewayIPv6Subnet *net.IPNet
 	gatewayIPv6CIDR   string
 	endpoints         map[string]*endpoint
-	proxy             *proxy.Proxy
-	proxyv6           *proxy.Proxy
-	cancel            func()
+
+	tcpProxy *proxy.TCPTProxy
+	udpProxy *proxy.UDPTProxy
+
+	cancel func()
 }
 
 type endpoint struct {
@@ -53,17 +55,13 @@ func (d *Driver) createNetwork(name string, ipv4data *NetworkData, ipv6data *Net
 		n.gatewayIPv6CIDR = ipv6data.Gateway
 	}
 	if n.gatewayIPv4 != nil {
-		n.proxy = &proxy.Proxy{
-			ProxyNetwork: "tcp",
-			ProxyAddr:    d.ProxyAddr,
-			LocalAddr:    net.JoinHostPort(n.gatewayIPv4.String(), "12345"),
+		n.tcpProxy = &proxy.TCPTProxy{
+			UpstreamProxy: d.tcpProxy,
+			LocalAddr:     net.JoinHostPort(n.gatewayIPv4.String(), "12345"),
 		}
-	}
-	if n.gatewayIPv6 != nil {
-		n.proxyv6 = &proxy.Proxy{
-			ProxyNetwork: "tcp",
-			ProxyAddr:    d.ProxyAddr,
-			LocalAddr:    net.JoinHostPort(n.gatewayIPv6.String(), "12345"),
+		n.udpProxy = &proxy.UDPTProxy{
+			UpstreamProxy: d.udpProxy,
+			LocalAddr:     net.JoinHostPort(n.gatewayIPv4.String(), "12345"),
 		}
 	}
 	if err := n.create(); err != nil {
@@ -95,17 +93,17 @@ func (n *network) create() error {
 	if err := netop.SetInterfaceUp(n.bridgeName); err != nil {
 		return err
 	}
-	if n.proxy != nil {
+	if n.tcpProxy != nil {
 		go func() {
-			if err := n.proxy.Serve(); err != nil {
-				fmt.Println(err)
+			if err := n.tcpProxy.Serve(); err != nil {
+				log.WithError(err).Error("Failed to serve TCP")
 			}
 		}()
 	}
-	if n.proxyv6 != nil {
+	if n.udpProxy != nil {
 		go func() {
-			if err := n.proxyv6.Serve(); err != nil {
-				fmt.Println(err)
+			if err := n.udpProxy.Serve(); err != nil {
+				log.WithError(err).Error("Failed to serve UDP")
 			}
 		}()
 	}
@@ -122,11 +120,11 @@ func (n *network) destroy() error {
 	if err := netop.DeleteInterface(n.bridgeName); err != nil {
 		return err
 	}
-	if n.proxy != nil {
-		n.proxy.Close()
+	if n.tcpProxy != nil {
+		n.tcpProxy.Close()
 	}
-	if n.proxyv6 != nil {
-		n.proxyv6.Close()
+	if n.udpProxy != nil {
+		n.udpProxy.Close()
 	}
 	return nil
 }
